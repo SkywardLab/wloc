@@ -117,9 +117,12 @@ https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.modul
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
-| longitude | 目标经度(在线选点优先) | null (透传) |
-| latitude | 目标纬度(在线选点优先) | null (透传) |
-| accuracy | 精度(米) | 25 |
+| enabled | 是否启用虚拟定位；`false` 透传原始 WLOC 响应 | true |
+| longitude | 目标经度，在线选点优先，兼容 `lon` | null (透传) |
+| latitude | 目标纬度，在线选点优先，兼容 `lat` | null (透传) |
+| accuracy | 水平精度(米)，兼容 `acc` | 25 |
+| verticalAccuracy | 垂直精度(米) | 30 |
+| altitude | 海拔(米) | 0 |
 | logLevel | 日志级别 | info |
 
 优先级: 在线选点储存 > 模块参数 > 默认值
@@ -136,6 +139,8 @@ https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.modul
 **方法二：清除持久化数据（透传模式）**
 
 清除已保存的坐标后，脚本进入**透传模式**——不修改 WLOC 响应，直接放行原始数据，系统自动恢复真实 GPS 定位。
+
+统一恢复语义：enabled=false 表示显式恢复真实定位/透传原始 WLOC 响应；清除旧持久化数据仍会触发透传模式。
 
 **透传模式触发条件：** 持久化数据为空（null）且模块参数为默认值（113.94114, 22.544577）时，脚本判定用户未自定义坐标，自动跳过修改。模块默认参数无需更改，仅清除持久化数据即可触发透传。
 
