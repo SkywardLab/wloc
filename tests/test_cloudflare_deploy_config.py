@@ -15,7 +15,7 @@ class CloudflareDeployConfigTests(unittest.TestCase):
     def test_root_wrangler_config_supports_cloudflare_deploy_button(self):
         config = load_json(self, ROOT / "wrangler.jsonc")
 
-        self.assertEqual(config["name"], "wloc-spoofer")
+        self.assertEqual(config["name"], "wloc")
         self.assertEqual(config["main"], "worker/src/index.js")
         self.assertTrue(config["compatibility_date"])
 
