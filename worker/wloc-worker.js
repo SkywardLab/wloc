@@ -152,6 +152,7 @@ body { font-family:-apple-system,system-ui,"SF Pro","Helvetica Neue",sans-serif;
 const SAVE_API = 'https://gs-loc.apple.com/wloc-settings/save';
 const FAV_KEY = 'wloc_favorites';
 let lat = 22.544577, lon = 113.94114;
+let altitude = 0;
 let selected = false;
 let activeLon = null, activeLat = null;
 
@@ -168,6 +169,11 @@ function setPos(newLat, newLon) {
   lat = newLat; lon = newLon; selected = true;
   marker.setLatLng([lat, lon]);
   document.getElementById('coords').textContent = '\\u7ecf\\u5ea6 ' + lon.toFixed(6) + '  \\u7eac\\u5ea6 ' + lat.toFixed(6);
+}
+
+function setAltitude(newAltitude) {
+  const n = Number(newAltitude);
+  altitude = Number.isFinite(n) ? n : 0;
 }
 
 function moveTo(newLat, newLon, zoom) {
@@ -276,7 +282,7 @@ function queryActive() {
       if (d.success && d.longitude && d.latitude) {
         activeLon = parseFloat(d.longitude);
         activeLat = parseFloat(d.latitude);
-        el.textContent = '\\u7ecf\\u5ea6 ' + activeLon.toFixed(6) + '  \\u7eac\\u5ea6 ' + activeLat.toFixed(6) + (d.accuracy ? '  \\u7cbe\\u5ea6 ' + d.accuracy + 'm' : '');
+        el.textContent = '\\u7ecf\\u5ea6 ' + activeLon.toFixed(6) + '  \\u7eac\\u5ea6 ' + activeLat.toFixed(6) + (d.accuracy ? '  \\u7cbe\\u5ea6 ' + d.accuracy + 'm' : '') + (d.altitude != null ? '  \\u6d77\\u62d4 ' + Number(d.altitude).toFixed(0) + 'm' : '');
         renderFavs();
       } else {
         activeLon = null; activeLat = null;
@@ -311,15 +317,15 @@ async function save() {
   btn.textContent = '\\u50a8\\u5b58\\u4e2d...'; btn.disabled = true;
   showError(false);
   try {
-    const r = await fetch(SAVE_API + '?lon=' + lon + '&lat=' + lat + '&acc=25', {
+    const r = await fetch(SAVE_API + '?lon=' + lon + '&lat=' + lat + '&acc=25&altitude=' + encodeURIComponent(String(altitude)), {
       method: 'GET', mode: 'cors', cache: 'no-store'
     });
     const d = await r.json();
     if (d.success) {
       activeLon = lon; activeLat = lat;
       btn.textContent = '\\u2713 \\u5df2\\u50a8\\u5b58'; btn.className = 'btn btn-primary success';
-      document.getElementById('status').textContent = '\\u2713 \\u5df2\\u5199\\u5165: ' + lon.toFixed(6) + ', ' + lat.toFixed(6) + ' \\u00b7 ' + new Date().toLocaleTimeString('zh-CN');
-      document.getElementById('activeValue').textContent = '\\u7ecf\\u5ea6 ' + lon.toFixed(6) + '  \\u7eac\\u5ea6 ' + lat.toFixed(6) + '  \\u7cbe\\u5ea6 25m';
+      document.getElementById('status').textContent = '\\u2713 \\u5df2\\u5199\\u5165: ' + lon.toFixed(6) + ', ' + lat.toFixed(6) + ' · \\u6d77\\u62d4 ' + altitude.toFixed(0) + 'm · ' + new Date().toLocaleTimeString('zh-CN');
+      document.getElementById('activeValue').textContent = '\\u7ecf\\u5ea6 ' + lon.toFixed(6) + '  \\u7eac\\u5ea6 ' + lat.toFixed(6) + '  \\u7cbe\\u5ea6 25m  \\u6d77\\u62d4 ' + altitude.toFixed(0) + 'm';
       renderFavs();
       toast('\\u2713 \\u5750\\u6807\\u5df2\\u5199\\u5165\\u8bbe\\u5907\\uff0c\\u4e0b\\u6b21\\u5b9a\\u4f4d\\u751f\\u6548');
       setTimeout(() => { btn.textContent='\\u50a8\\u5b58\\u5230\\u8bbe\\u5907'; btn.className='btn btn-primary'; btn.disabled=false; }, 2500);
@@ -337,7 +343,7 @@ function locateMe() {
   if (!navigator.geolocation) return toast('\\u6d4f\\u89c8\\u5668\\u4e0d\\u652f\\u6301\\u5b9a\\u4f4d');
   toast('\\u83b7\\u53d6\\u4f4d\\u7f6e\\u4e2d...');
   navigator.geolocation.getCurrentPosition(
-    pos => { moveTo(pos.coords.latitude, pos.coords.longitude, 16); toast('\\u5df2\\u83b7\\u53d6\\u5f53\\u524d\\u4f4d\\u7f6e'); },
+    pos => { moveTo(pos.coords.latitude, pos.coords.longitude, 16); setAltitude(pos.coords.altitude); toast('\\u5df2\\u83b7\\u53d6\\u5f53\\u524d\\u4f4d\\u7f6e'); },
     err => toast('\\u5b9a\\u4f4d\\u5931\\u8d25: ' + err.message, 3000),
     { enableHighAccuracy:true, timeout:10000 }
   );
