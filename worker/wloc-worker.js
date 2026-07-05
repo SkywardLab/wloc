@@ -184,6 +184,12 @@ function formatAltitude(value) {
   return Number.isFinite(value) ? '  \\u6d77\\u62d4 ' + value.toFixed(0) + 'm' : '';
 }
 
+function formatFavoriteAltitude(value) {
+  if (value == null || value === '') return '';
+  const favAltitude = Number(value);
+  return Number.isFinite(favAltitude) && favAltitude !== 0 ? ' · \\u6d77\\u62d4 ' + favAltitude.toFixed(0) + 'm' : '';
+}
+
 async function fetchElevation(newLat, newLon) {
   try {
     const r = await fetch('https://api.open-meteo.com/v1/elevation?latitude=' + encodeURIComponent(String(newLat)) + '&longitude=' + encodeURIComponent(String(newLon)), { cache:'no-store' });
@@ -241,7 +247,7 @@ function renderFavs() {
     return '<div class="fav-item" onclick="loadFav(' + i + ')">' +
       '<div class="fav-info">' +
         '<div class="fav-name">' + escHtml(f.name) + '</div>' +
-        '<div class="fav-coords">' + f.lon.toFixed(6) + ', ' + f.lat.toFixed(6) + '</div>' +
+        '<div class="fav-coords">' + f.lon.toFixed(6) + ', ' + f.lat.toFixed(6) + formatFavoriteAltitude(f.altitude) + '</div>' +
         (isActive ? '<div class="fav-active">\\u2713 \\u5f53\\u524d\\u751f\\u6548</div>' : '') +
       '<\/div>' +
       '<button class="fav-del" onclick="event.stopPropagation();delFav(' + i + ')" title="\\u5220\\u9664">\\u00d7<\/button>' +
@@ -253,9 +259,10 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function addFav() {
+async function addFav() {
   if (!selected) { toast('\\u8bf7\\u5148\\u5728\\u5730\\u56fe\\u4e0a\\u9009\\u62e9\\u4e00\\u4e2a\\u4f4d\\u7f6e'); return; }
-  document.getElementById('favModalCoords').textContent = lon.toFixed(6) + ', ' + lat.toFixed(6);
+  await updateAltitudeForPosition(lat, lon);
+  document.getElementById('favModalCoords').textContent = lon.toFixed(6) + ', ' + lat.toFixed(6) + formatFavoriteAltitude(altitude);
   document.getElementById('favNameInput').value = '';
   document.getElementById('favModal').classList.add('show');
   setTimeout(() => document.getElementById('favNameInput').focus(), 100);
@@ -269,7 +276,7 @@ function confirmFav() {
   const name = document.getElementById('favNameInput').value.trim();
   if (!name) { toast('\\u8bf7\\u8f93\\u5165\\u5907\\u6ce8\\u540d\\u79f0'); return; }
   const favs = getFavs();
-  favs.push({ name, lon, lat, time: new Date().toISOString() });
+  favs.push({ name, lon, lat, altitude: Number.isFinite(altitude) && altitude !== 0 ? altitude : null, time: new Date().toISOString() });
   saveFavs(favs);
   closeFavModal();
   renderFavs();
@@ -280,6 +287,7 @@ function loadFav(i) {
   const favs = getFavs();
   if (!favs[i]) return;
   moveTo(favs[i].lat, favs[i].lon, 15);
+  setAltitude(favs[i].altitude);
   toast(favs[i].name + ' (' + favs[i].lon.toFixed(4) + ', ' + favs[i].lat.toFixed(4) + ')');
 }
 

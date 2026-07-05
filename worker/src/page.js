@@ -192,6 +192,12 @@ function formatAltitude(value) {
   return Number.isFinite(value) ? '  海拔 ' + value.toFixed(0) + 'm' : '';
 }
 
+function formatFavoriteAltitude(value) {
+  if (value == null || value === '') return '';
+  const favAltitude = Number(value);
+  return Number.isFinite(favAltitude) && favAltitude !== 0 ? ' · 海拔 ' + favAltitude.toFixed(0) + 'm' : '';
+}
+
 async function fetchElevation(newLat, newLon) {
   try {
     const r = await fetch('https://api.open-meteo.com/v1/elevation?latitude=' + encodeURIComponent(String(newLat)) + '&longitude=' + encodeURIComponent(String(newLon)), { cache:'no-store' });
@@ -249,7 +255,7 @@ function renderFavs() {
     return '<div class="fav-item" onclick="loadFav(' + i + ')">' +
       '<div class="fav-info">' +
         '<div class="fav-name">' + escHtml(f.name) + '<\\/div>' +
-        '<div class="fav-coords">' + f.lon.toFixed(6) + ', ' + f.lat.toFixed(6) + '<\\/div>' +
+        '<div class="fav-coords">' + f.lon.toFixed(6) + ', ' + f.lat.toFixed(6) + formatFavoriteAltitude(f.altitude) + '<\\/div>' +
         (isActive ? '<div class="fav-active">\\u2713 当前生效<\\/div>' : '') +
       '<\\/div>' +
       '<button class="fav-del" onclick="event.stopPropagation();delFav(' + i + ')" title="删除">\\u00d7<\\/button>' +
@@ -261,9 +267,10 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function addFav() {
+async function addFav() {
   if (!selected) { toast('请先在地图上选择一个位置'); return; }
-  document.getElementById('favModalCoords').textContent = lon.toFixed(6) + ', ' + lat.toFixed(6);
+  await updateAltitudeForPosition(lat, lon);
+  document.getElementById('favModalCoords').textContent = lon.toFixed(6) + ', ' + lat.toFixed(6) + formatFavoriteAltitude(altitude);
   document.getElementById('favNameInput').value = '';
   document.getElementById('favModal').classList.add('show');
   setTimeout(() => document.getElementById('favNameInput').focus(), 100);
@@ -277,7 +284,7 @@ function confirmFav() {
   const name = document.getElementById('favNameInput').value.trim();
   if (!name) { toast('请输入备注名称'); return; }
   const favs = getFavs();
-  favs.push({ name, lon, lat, time: new Date().toISOString() });
+  favs.push({ name, lon, lat, altitude: Number.isFinite(altitude) && altitude !== 0 ? altitude : null, time: new Date().toISOString() });
   saveFavs(favs);
   closeFavModal();
   renderFavs();
@@ -288,6 +295,7 @@ function loadFav(i) {
   const favs = getFavs();
   if (!favs[i]) return;
   moveTo(favs[i].lat, favs[i].lon, 15);
+  setAltitude(favs[i].altitude);
   toast(favs[i].name + ' (' + favs[i].lon.toFixed(4) + ', ' + favs[i].lat.toFixed(4) + ')');
 }
 
