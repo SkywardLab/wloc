@@ -147,6 +147,7 @@ body { font-family:-apple-system,system-ui,"SF Pro","Helvetica Neue",sans-serif;
 const SAVE_API = 'https://gs-loc.apple.com/wloc-settings/save';
 const FAV_KEY = 'wloc_favorites';
 let lat = 22.544577, lon = 113.94114;
+let altitude = 0;
 let selected = false;
 let activeLon = null, activeLat = null;
 
@@ -176,6 +177,11 @@ function setPos(newLat, newLon) {
   lat = newLat; lon = newLon; selected = true;
   marker.setLatLng([lat, lon]);
   document.getElementById('coords').textContent = '经度 ' + lon.toFixed(6) + '  纬度 ' + lat.toFixed(6);
+}
+
+function setAltitude(newAltitude) {
+  const n = Number(newAltitude);
+  altitude = Number.isFinite(n) ? n : 0;
 }
 
 function moveTo(newLat, newLon, zoom) {
@@ -284,7 +290,7 @@ function queryActive() {
       if (d.success && d.longitude && d.latitude) {
         activeLon = parseFloat(d.longitude);
         activeLat = parseFloat(d.latitude);
-        el.textContent = '经度 ' + activeLon.toFixed(6) + '  纬度 ' + activeLat.toFixed(6) + (d.accuracy ? '  精度 ' + d.accuracy + 'm' : '');
+        el.textContent = '经度 ' + activeLon.toFixed(6) + '  纬度 ' + activeLat.toFixed(6) + (d.accuracy ? '  精度 ' + d.accuracy + 'm' : '') + (d.altitude != null ? '  海拔 ' + Number(d.altitude).toFixed(0) + 'm' : '');
         renderFavs();
       } else {
         activeLon = null; activeLat = null;
@@ -319,15 +325,15 @@ async function save() {
   btn.textContent = '储存中...'; btn.disabled = true;
   showError(false);
   try {
-    const r = await fetch(SAVE_API + '?lon=' + lon + '&lat=' + lat + '&acc=25', {
+    const r = await fetch(SAVE_API + '?lon=' + lon + '&lat=' + lat + '&acc=25&altitude=' + encodeURIComponent(String(altitude)), {
       method: 'GET', mode: 'cors', cache: 'no-store'
     });
     const d = await r.json();
     if (d.success) {
       activeLon = lon; activeLat = lat;
       btn.textContent = '\\u2713 已储存'; btn.className = 'btn btn-primary success';
-      document.getElementById('status').textContent = '\\u2713 已写入: ' + lon.toFixed(6) + ', ' + lat.toFixed(6) + ' \\u00b7 ' + new Date().toLocaleTimeString('zh-CN');
-      document.getElementById('activeValue').textContent = '经度 ' + lon.toFixed(6) + '  纬度 ' + lat.toFixed(6) + '  精度 25m';
+      document.getElementById('status').textContent = '\\u2713 已写入: ' + lon.toFixed(6) + ', ' + lat.toFixed(6) + ' · 海拔 ' + altitude.toFixed(0) + 'm · ' + new Date().toLocaleTimeString('zh-CN');
+      document.getElementById('activeValue').textContent = '经度 ' + lon.toFixed(6) + '  纬度 ' + lat.toFixed(6) + '  精度 25m  海拔 ' + altitude.toFixed(0) + 'm';
       renderFavs();
       toast('\\u2713 坐标已写入设备，下次定位生效');
       setTimeout(() => { btn.textContent='储存到设备'; btn.className='btn btn-primary'; btn.disabled=false; }, 2500);
@@ -345,7 +351,7 @@ function locateMe() {
   if (!navigator.geolocation) return toast('浏览器不支持定位');
   toast('获取位置中...');
   navigator.geolocation.getCurrentPosition(
-    pos => { moveTo(pos.coords.latitude, pos.coords.longitude, 16); toast('已获取当前位置'); },
+    pos => { moveTo(pos.coords.latitude, pos.coords.longitude, 16); setAltitude(pos.coords.altitude); toast('已获取当前位置'); },
     err => toast('定位失败: ' + err.message, 3000),
     { enableHighAccuracy:true, timeout:10000 }
   );
