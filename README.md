@@ -28,15 +28,15 @@ https://raw.githubusercontent.com/SkywardLab/wloc/refs/heads/main/modules/wloc.m
 > Egern 可直接使用 Surge 模块
 > Stash 请直接订阅上面的 `.stoverride`，无需用 Script Hub 转换
 
-### 扩展域名模块
+### 默认扩展域名支持
 
-标准模块保持 `gs-loc.apple.com` 与 `gs-loc-cn.apple.com` 两个 MITM 主机。代理日志显示 `/clls/wloc` 使用下列域名时，可改用 [`modules/extended/`](modules/extended/) 中对应平台的扩展模块：
+默认模块已覆盖目前已知的完整 WLOC 域名集合：
 
 - `gsp-ssl.ls.apple.com`
 - `bluedot.is.autonavi.com`
 - `bluedot.is.autonavi.com.gds.alibabadns.com`
 
-扩展模块与标准模块共享脚本、设置格式和升级路径。
+[`modules/extended/`](modules/extended/) 保留为旧扩展订阅的兼容入口，与默认模块共享脚本、设置格式和升级路径。
 
 ---
 
