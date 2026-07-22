@@ -147,6 +147,7 @@ body { font-family:-apple-system,system-ui,"SF Pro","Helvetica Neue",sans-serif;
 const SAVE_API = 'https://gs-loc.apple.com/wloc-settings/save';
 const FAV_KEY = 'wloc_favorites';
 let lat = 22.544577, lon = 113.94114;
+let altitude = null;
 let selected = false;
 let activeLon = null, activeLat = null;
 
@@ -178,9 +179,48 @@ function setPos(newLat, newLon) {
   document.getElementById('coords').textContent = '经度 ' + lon.toFixed(6) + '  纬度 ' + lat.toFixed(6);
 }
 
+function setAltitude(newAltitude) {
+  if (newAltitude == null || newAltitude === '') {
+    altitude = null;
+    return;
+  }
+  const n = Number(newAltitude);
+  altitude = Number.isFinite(n) ? n : null;
+}
+
+function formatAltitude(value) {
+  return Number.isFinite(value) ? '  海拔 ' + value.toFixed(0) + 'm' : '';
+}
+
+function formatFavoriteAltitude(value) {
+  if (value == null || value === '') return '';
+  const favAltitude = Number(value);
+  return Number.isFinite(favAltitude) && favAltitude !== 0 ? ' · 海拔 ' + favAltitude.toFixed(0) + 'm' : '';
+}
+
+async function fetchElevation(newLat, newLon) {
+  try {
+    const r = await fetch('https://api.open-meteo.com/v1/elevation?latitude=' + encodeURIComponent(String(newLat)) + '&longitude=' + encodeURIComponent(String(newLon)), { cache:'no-store' });
+    const d = await r.json();
+    const elevation = d && d.elevation && d.elevation.length ? d.elevation[0] : null;
+    if (elevation == null || elevation === '') return null;
+    const n = Number(elevation);
+    return Number.isFinite(n) ? Math.round(n) : null;
+  } catch(e) {
+    return null;
+  }
+}
+
+async function updateAltitudeForPosition(newLat, newLon) {
+  const value = await fetchElevation(newLat, newLon);
+  setAltitude(value);
+  return altitude;
+}
+
 function moveTo(newLat, newLon, zoom) {
   setPos(newLat, newLon);
   map.setView([lat, lon], zoom || 15);
+  updateAltitudeForPosition(lat, lon);
 }
 
 function toast(msg, ms) {
@@ -215,7 +255,7 @@ function renderFavs() {
     return '<div class="fav-item" onclick="loadFav(' + i + ')">' +
       '<div class="fav-info">' +
         '<div class="fav-name">' + escHtml(f.name) + '<\\/div>' +
-        '<div class="fav-coords">' + f.lon.toFixed(6) + ', ' + f.lat.toFixed(6) + '<\\/div>' +
+        '<div class="fav-coords">' + f.lon.toFixed(6) + ', ' + f.lat.toFixed(6) + formatFavoriteAltitude(f.altitude) + '<\\/div>' +
         (isActive ? '<div class="fav-active">\\u2713 当前生效<\\/div>' : '') +
       '<\\/div>' +
       '<button class="fav-del" onclick="event.stopPropagation();delFav(' + i + ')" title="删除">\\u00d7<\\/button>' +
@@ -227,9 +267,10 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function addFav() {
+async function addFav() {
   if (!selected) { toast('请先在地图上选择一个位置'); return; }
-  document.getElementById('favModalCoords').textContent = lon.toFixed(6) + ', ' + lat.toFixed(6);
+  await updateAltitudeForPosition(lat, lon);
+  document.getElementById('favModalCoords').textContent = lon.toFixed(6) + ', ' + lat.toFixed(6) + formatFavoriteAltitude(altitude);
   document.getElementById('favNameInput').value = '';
   document.getElementById('favModal').classList.add('show');
   setTimeout(() => document.getElementById('favNameInput').focus(), 100);
@@ -243,7 +284,7 @@ function confirmFav() {
   const name = document.getElementById('favNameInput').value.trim();
   if (!name) { toast('请输入备注名称'); return; }
   const favs = getFavs();
-  favs.push({ name, lon, lat, time: new Date().toISOString() });
+  favs.push({ name, lon, lat, altitude: Number.isFinite(altitude) && altitude !== 0 ? altitude : null, time: new Date().toISOString() });
   saveFavs(favs);
   closeFavModal();
   renderFavs();
@@ -254,6 +295,7 @@ function loadFav(i) {
   const favs = getFavs();
   if (!favs[i]) return;
   moveTo(favs[i].lat, favs[i].lon, 15);
+  setAltitude(favs[i].altitude);
   toast(favs[i].name + ' (' + favs[i].lon.toFixed(4) + ', ' + favs[i].lat.toFixed(4) + ')');
 }
 
@@ -284,7 +326,8 @@ function queryActive() {
       if (d.success && d.longitude && d.latitude) {
         activeLon = parseFloat(d.longitude);
         activeLat = parseFloat(d.latitude);
-        el.textContent = '经度 ' + activeLon.toFixed(6) + '  纬度 ' + activeLat.toFixed(6) + (d.accuracy ? '  精度 ' + d.accuracy + 'm' : '');
+        const savedAltitude = Number(d.altitude);
+        el.textContent = '经度 ' + activeLon.toFixed(6) + '  纬度 ' + activeLat.toFixed(6) + (d.accuracy ? '  精度 ' + d.accuracy + 'm' : '') + (Number.isFinite(savedAltitude) && savedAltitude !== 0 ? '  海拔 ' + savedAltitude.toFixed(0) + 'm' : '');
         renderFavs();
       } else {
         activeLon = null; activeLat = null;
@@ -319,15 +362,17 @@ async function save() {
   btn.textContent = '储存中...'; btn.disabled = true;
   showError(false);
   try {
-    const r = await fetch(SAVE_API + '?lon=' + lon + '&lat=' + lat + '&acc=25', {
+    await updateAltitudeForPosition(lat, lon);
+    if (altitude == null) throw new Error('海拔查询失败');
+    const r = await fetch(SAVE_API + '?lon=' + lon + '&lat=' + lat + '&acc=25&altitude=' + encodeURIComponent(String(altitude)), {
       method: 'GET', mode: 'cors', cache: 'no-store'
     });
     const d = await r.json();
     if (d.success) {
       activeLon = lon; activeLat = lat;
       btn.textContent = '\\u2713 已储存'; btn.className = 'btn btn-primary success';
-      document.getElementById('status').textContent = '\\u2713 已写入: ' + lon.toFixed(6) + ', ' + lat.toFixed(6) + ' \\u00b7 ' + new Date().toLocaleTimeString('zh-CN');
-      document.getElementById('activeValue').textContent = '经度 ' + lon.toFixed(6) + '  纬度 ' + lat.toFixed(6) + '  精度 25m';
+      document.getElementById('status').textContent = '\\u2713 已写入: ' + lon.toFixed(6) + ', ' + lat.toFixed(6) + ' · 海拔 ' + altitude.toFixed(0) + 'm · ' + new Date().toLocaleTimeString('zh-CN');
+      document.getElementById('activeValue').textContent = '经度 ' + lon.toFixed(6) + '  纬度 ' + lat.toFixed(6) + '  精度 25m' + formatAltitude(altitude);
       renderFavs();
       toast('\\u2713 坐标已写入设备，下次定位生效');
       setTimeout(() => { btn.textContent='储存到设备'; btn.className='btn btn-primary'; btn.disabled=false; }, 2500);
@@ -345,7 +390,7 @@ function locateMe() {
   if (!navigator.geolocation) return toast('浏览器不支持定位');
   toast('获取位置中...');
   navigator.geolocation.getCurrentPosition(
-    pos => { moveTo(pos.coords.latitude, pos.coords.longitude, 16); toast('已获取当前位置'); },
+    async pos => { moveTo(pos.coords.latitude, pos.coords.longitude, 16); setAltitude(pos.coords.altitude); if (altitude == null) await updateAltitudeForPosition(lat, lon); toast('已获取当前位置'); },
     err => toast('定位失败: ' + err.message, 3000),
     { enableHighAccuracy:true, timeout:10000 }
   );

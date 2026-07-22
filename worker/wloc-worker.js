@@ -152,6 +152,7 @@ body { font-family:-apple-system,system-ui,"SF Pro","Helvetica Neue",sans-serif;
 const SAVE_API = 'https://gs-loc.apple.com/wloc-settings/save';
 const FAV_KEY = 'wloc_favorites';
 let lat = 22.544577, lon = 113.94114;
+let altitude = null;
 let selected = false;
 let activeLon = null, activeLat = null;
 
@@ -170,9 +171,48 @@ function setPos(newLat, newLon) {
   document.getElementById('coords').textContent = '\\u7ecf\\u5ea6 ' + lon.toFixed(6) + '  \\u7eac\\u5ea6 ' + lat.toFixed(6);
 }
 
+function setAltitude(newAltitude) {
+  if (newAltitude == null || newAltitude === '') {
+    altitude = null;
+    return;
+  }
+  const n = Number(newAltitude);
+  altitude = Number.isFinite(n) ? n : null;
+}
+
+function formatAltitude(value) {
+  return Number.isFinite(value) ? '  \\u6d77\\u62d4 ' + value.toFixed(0) + 'm' : '';
+}
+
+function formatFavoriteAltitude(value) {
+  if (value == null || value === '') return '';
+  const favAltitude = Number(value);
+  return Number.isFinite(favAltitude) && favAltitude !== 0 ? ' · \\u6d77\\u62d4 ' + favAltitude.toFixed(0) + 'm' : '';
+}
+
+async function fetchElevation(newLat, newLon) {
+  try {
+    const r = await fetch('https://api.open-meteo.com/v1/elevation?latitude=' + encodeURIComponent(String(newLat)) + '&longitude=' + encodeURIComponent(String(newLon)), { cache:'no-store' });
+    const d = await r.json();
+    const elevation = d && d.elevation && d.elevation.length ? d.elevation[0] : null;
+    if (elevation == null || elevation === '') return null;
+    const n = Number(elevation);
+    return Number.isFinite(n) ? Math.round(n) : null;
+  } catch(e) {
+    return null;
+  }
+}
+
+async function updateAltitudeForPosition(newLat, newLon) {
+  const value = await fetchElevation(newLat, newLon);
+  setAltitude(value);
+  return altitude;
+}
+
 function moveTo(newLat, newLon, zoom) {
   setPos(newLat, newLon);
   map.setView([lat, lon], zoom || 15);
+  updateAltitudeForPosition(lat, lon);
 }
 
 function toast(msg, ms) {
@@ -207,7 +247,7 @@ function renderFavs() {
     return '<div class="fav-item" onclick="loadFav(' + i + ')">' +
       '<div class="fav-info">' +
         '<div class="fav-name">' + escHtml(f.name) + '</div>' +
-        '<div class="fav-coords">' + f.lon.toFixed(6) + ', ' + f.lat.toFixed(6) + '</div>' +
+        '<div class="fav-coords">' + f.lon.toFixed(6) + ', ' + f.lat.toFixed(6) + formatFavoriteAltitude(f.altitude) + '</div>' +
         (isActive ? '<div class="fav-active">\\u2713 \\u5f53\\u524d\\u751f\\u6548</div>' : '') +
       '<\/div>' +
       '<button class="fav-del" onclick="event.stopPropagation();delFav(' + i + ')" title="\\u5220\\u9664">\\u00d7<\/button>' +
@@ -219,9 +259,10 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function addFav() {
+async function addFav() {
   if (!selected) { toast('\\u8bf7\\u5148\\u5728\\u5730\\u56fe\\u4e0a\\u9009\\u62e9\\u4e00\\u4e2a\\u4f4d\\u7f6e'); return; }
-  document.getElementById('favModalCoords').textContent = lon.toFixed(6) + ', ' + lat.toFixed(6);
+  await updateAltitudeForPosition(lat, lon);
+  document.getElementById('favModalCoords').textContent = lon.toFixed(6) + ', ' + lat.toFixed(6) + formatFavoriteAltitude(altitude);
   document.getElementById('favNameInput').value = '';
   document.getElementById('favModal').classList.add('show');
   setTimeout(() => document.getElementById('favNameInput').focus(), 100);
@@ -235,7 +276,7 @@ function confirmFav() {
   const name = document.getElementById('favNameInput').value.trim();
   if (!name) { toast('\\u8bf7\\u8f93\\u5165\\u5907\\u6ce8\\u540d\\u79f0'); return; }
   const favs = getFavs();
-  favs.push({ name, lon, lat, time: new Date().toISOString() });
+  favs.push({ name, lon, lat, altitude: Number.isFinite(altitude) && altitude !== 0 ? altitude : null, time: new Date().toISOString() });
   saveFavs(favs);
   closeFavModal();
   renderFavs();
@@ -246,6 +287,7 @@ function loadFav(i) {
   const favs = getFavs();
   if (!favs[i]) return;
   moveTo(favs[i].lat, favs[i].lon, 15);
+  setAltitude(favs[i].altitude);
   toast(favs[i].name + ' (' + favs[i].lon.toFixed(4) + ', ' + favs[i].lat.toFixed(4) + ')');
 }
 
@@ -276,7 +318,8 @@ function queryActive() {
       if (d.success && d.longitude && d.latitude) {
         activeLon = parseFloat(d.longitude);
         activeLat = parseFloat(d.latitude);
-        el.textContent = '\\u7ecf\\u5ea6 ' + activeLon.toFixed(6) + '  \\u7eac\\u5ea6 ' + activeLat.toFixed(6) + (d.accuracy ? '  \\u7cbe\\u5ea6 ' + d.accuracy + 'm' : '');
+        const savedAltitude = Number(d.altitude);
+        el.textContent = '\\u7ecf\\u5ea6 ' + activeLon.toFixed(6) + '  \\u7eac\\u5ea6 ' + activeLat.toFixed(6) + (d.accuracy ? '  \\u7cbe\\u5ea6 ' + d.accuracy + 'm' : '') + (Number.isFinite(savedAltitude) && savedAltitude !== 0 ? '  \\u6d77\\u62d4 ' + savedAltitude.toFixed(0) + 'm' : '');
         renderFavs();
       } else {
         activeLon = null; activeLat = null;
@@ -311,15 +354,17 @@ async function save() {
   btn.textContent = '\\u50a8\\u5b58\\u4e2d...'; btn.disabled = true;
   showError(false);
   try {
-    const r = await fetch(SAVE_API + '?lon=' + lon + '&lat=' + lat + '&acc=25', {
+    await updateAltitudeForPosition(lat, lon);
+    if (altitude == null) throw new Error('\u6d77\u62d4\u67e5\u8be2\u5931\u8d25');
+    const r = await fetch(SAVE_API + '?lon=' + lon + '&lat=' + lat + '&acc=25&altitude=' + encodeURIComponent(String(altitude)), {
       method: 'GET', mode: 'cors', cache: 'no-store'
     });
     const d = await r.json();
     if (d.success) {
       activeLon = lon; activeLat = lat;
       btn.textContent = '\\u2713 \\u5df2\\u50a8\\u5b58'; btn.className = 'btn btn-primary success';
-      document.getElementById('status').textContent = '\\u2713 \\u5df2\\u5199\\u5165: ' + lon.toFixed(6) + ', ' + lat.toFixed(6) + ' \\u00b7 ' + new Date().toLocaleTimeString('zh-CN');
-      document.getElementById('activeValue').textContent = '\\u7ecf\\u5ea6 ' + lon.toFixed(6) + '  \\u7eac\\u5ea6 ' + lat.toFixed(6) + '  \\u7cbe\\u5ea6 25m';
+      document.getElementById('status').textContent = '\\u2713 \\u5df2\\u5199\\u5165: ' + lon.toFixed(6) + ', ' + lat.toFixed(6) + formatAltitude(altitude) + ' · ' + new Date().toLocaleTimeString('zh-CN');
+      document.getElementById('activeValue').textContent = '\\u7ecf\\u5ea6 ' + lon.toFixed(6) + '  \\u7eac\\u5ea6 ' + lat.toFixed(6) + '  \\u7cbe\\u5ea6 25m' + formatAltitude(altitude);
       renderFavs();
       toast('\\u2713 \\u5750\\u6807\\u5df2\\u5199\\u5165\\u8bbe\\u5907\\uff0c\\u4e0b\\u6b21\\u5b9a\\u4f4d\\u751f\\u6548');
       setTimeout(() => { btn.textContent='\\u50a8\\u5b58\\u5230\\u8bbe\\u5907'; btn.className='btn btn-primary'; btn.disabled=false; }, 2500);
@@ -337,7 +382,7 @@ function locateMe() {
   if (!navigator.geolocation) return toast('\\u6d4f\\u89c8\\u5668\\u4e0d\\u652f\\u6301\\u5b9a\\u4f4d');
   toast('\\u83b7\\u53d6\\u4f4d\\u7f6e\\u4e2d...');
   navigator.geolocation.getCurrentPosition(
-    pos => { moveTo(pos.coords.latitude, pos.coords.longitude, 16); toast('\\u5df2\\u83b7\\u53d6\\u5f53\\u524d\\u4f4d\\u7f6e'); },
+    async pos => { moveTo(pos.coords.latitude, pos.coords.longitude, 16); setAltitude(pos.coords.altitude); if (altitude == null) await updateAltitudeForPosition(lat, lon); toast('\\u5df2\\u83b7\\u53d6\\u5f53\\u524d\\u4f4d\\u7f6e'); },
     err => toast('\\u5b9a\\u4f4d\\u5931\\u8d25: ' + err.message, 3000),
     { enableHighAccuracy:true, timeout:10000 }
   );
