@@ -1,6 +1,9 @@
 node_modules/
 __pycache__/
 *.pyc
-src/
 rollup.config.js
 .DS_Store
+.worktrees/
+
+tests/
+docs/superpowers/

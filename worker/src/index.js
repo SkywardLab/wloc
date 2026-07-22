@@ -4,7 +4,26 @@ import { parseCoords, gcj02ToWgs84, round6 } from "./parse.js";
 
 const app = new Hono();
 
+const PAGE_CSP = [
+  "default-src 'none'",
+  "script-src https://unpkg.com 'unsafe-inline'",
+  "style-src https://unpkg.com 'unsafe-inline'",
+  "img-src https: data:",
+  "connect-src 'self' https://gs-loc.apple.com https://api.open-meteo.com https://nominatim.openstreetmap.org",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+const PAGE_HEADERS = {
+  "Content-Security-Policy": PAGE_CSP,
+  "Referrer-Policy": "no-referrer",
+  "X-Content-Type-Options": "nosniff",
+  "Cache-Control": "no-store",
+};
+
 app.get("/", (c) => {
+  for (const [name, value] of Object.entries(PAGE_HEADERS)) c.header(name, value);
   return c.html(getPageHtml());
 });
 

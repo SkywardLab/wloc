@@ -7,8 +7,8 @@ export function getPageHtml() {
 <title>WLOC 虚拟定位</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="WLOC">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>
 <style>
 :root { --blue:#007aff; --green:#34c759; --red:#ff3b30; --gray:#8e8e93; --bg:#f2f2f7; --orange:#ff9500; }
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -93,8 +93,14 @@ body { font-family:-apple-system,system-ui,"SF Pro","Helvetica Neue",sans-serif;
     <div class="row">
       <button class="btn btn-primary" id="saveBtn" onclick="save()">储存到设备</button>
       <button class="btn btn-secondary" onclick="addFav()">收藏位置</button>
-      <button class="btn btn-secondary" onclick="locateMe()">当前位置</button>
+      <button class="btn btn-secondary" id="currentLocation" onclick="locateMe()">当前位置</button>
     </div>
+    <details style="margin-top:10px">
+      <summary style="font-size:13px;color:var(--blue);cursor:pointer">高级定位参数</summary>
+      <div class="input-row"><input id="horizontalAccuracy" type="number" min="0" max="10000" value="25" placeholder="水平精度(米)" /></div>
+      <div class="input-row"><input id="verticalAccuracy" type="number" min="0" max="10000" value="30" placeholder="垂直精度(米)" /></div>
+      <div class="input-row"><input id="altitude" type="number" min="-12000" max="100000" placeholder="海拔(米，自动查询)" /></div>
+    </details>
   </div>
   <div class="card">
     <div class="fav-header">
@@ -111,7 +117,9 @@ body { font-family:-apple-system,system-ui,"SF Pro","Helvetica Neue",sans-serif;
     </div>
     <div class="row">
       <button class="btn btn-sm btn-secondary" onclick="queryActive()">刷新</button>
-      <button class="btn btn-sm btn-danger" onclick="clearActive()">清除数据</button>
+      <button class="btn btn-sm btn-primary" id="enableLocation" onclick="setActiveState('enable')">启用</button>
+      <button class="btn btn-sm btn-secondary" id="pauseLocation" onclick="setActiveState('disable')">暂停</button>
+      <button class="btn btn-sm btn-danger" id="clearLocation" onclick="clearActive()">清除</button>
     </div>
   </div>
   <div class="card">
@@ -150,6 +158,8 @@ let lat = 22.544577, lon = 113.94114;
 let altitude = null;
 let selected = false;
 let activeLon = null, activeLat = null;
+let activeEnabled = false;
+let activeStateLoaded = false;
 
 const map = L.map('map').setView([lat, lon], 13);
 const tiles = {
@@ -182,10 +192,26 @@ function setPos(newLat, newLon) {
 function setAltitude(newAltitude) {
   if (newAltitude == null || newAltitude === '') {
     altitude = null;
+    const input = document.getElementById('altitude');
+    if (input) input.value = '';
     return;
   }
   const n = Number(newAltitude);
   altitude = Number.isFinite(n) ? n : null;
+  const input = document.getElementById('altitude');
+  if (input) input.value = altitude == null ? '' : String(altitude);
+}
+
+function readNumber(id, fallback, min, max) {
+  const value = Number(document.getElementById(id).value);
+  return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
+}
+function readAccuracy() { return readNumber('horizontalAccuracy', 25, 0, 10000); }
+function readVerticalAccuracy() { return readNumber('verticalAccuracy', 30, 0, 10000); }
+function setAdvancedFields(value) {
+  document.getElementById('horizontalAccuracy').value = String(Number.isFinite(Number(value.accuracy)) ? Number(value.accuracy) : 25);
+  document.getElementById('verticalAccuracy').value = String(Number.isFinite(Number(value.verticalAccuracy)) ? Number(value.verticalAccuracy) : 30);
+  setAltitude(value.altitude);
 }
 
 function formatAltitude(value) {
@@ -269,7 +295,7 @@ function escHtml(s) {
 
 async function addFav() {
   if (!selected) { toast('请先在地图上选择一个位置'); return; }
-  await updateAltitudeForPosition(lat, lon);
+  if (!document.getElementById('altitude').value) await updateAltitudeForPosition(lat, lon);
   document.getElementById('favModalCoords').textContent = lon.toFixed(6) + ', ' + lat.toFixed(6) + formatFavoriteAltitude(altitude);
   document.getElementById('favNameInput').value = '';
   document.getElementById('favModal').classList.add('show');
@@ -284,7 +310,7 @@ function confirmFav() {
   const name = document.getElementById('favNameInput').value.trim();
   if (!name) { toast('请输入备注名称'); return; }
   const favs = getFavs();
-  favs.push({ name, lon, lat, altitude: Number.isFinite(altitude) && altitude !== 0 ? altitude : null, time: new Date().toISOString() });
+  favs.push({ name, lon, lat, accuracy: readAccuracy(), verticalAccuracy: readVerticalAccuracy(), altitude: Number.isFinite(altitude) ? altitude : null, time: new Date().toISOString() });
   saveFavs(favs);
   closeFavModal();
   renderFavs();
@@ -294,8 +320,9 @@ function confirmFav() {
 function loadFav(i) {
   const favs = getFavs();
   if (!favs[i]) return;
-  moveTo(favs[i].lat, favs[i].lon, 15);
-  setAltitude(favs[i].altitude);
+  setPos(favs[i].lat, favs[i].lon);
+  map.setView([lat, lon], 15);
+  setAdvancedFields(favs[i]);
   toast(favs[i].name + ' (' + favs[i].lon.toFixed(4) + ', ' + favs[i].lat.toFixed(4) + ')');
 }
 
@@ -323,21 +350,38 @@ function queryActive() {
   fetch(SAVE_API + '?action=query', { method:'GET', mode:'cors', cache:'no-store' })
     .then(r => r.json())
     .then(d => {
-      if (d.success && d.longitude && d.latitude) {
+      if (d.success && d.longitude != null && d.latitude != null) {
+        activeStateLoaded = true;
         activeLon = parseFloat(d.longitude);
         activeLat = parseFloat(d.latitude);
+        activeEnabled = d.enabled !== false;
+        setAdvancedFields(d);
         const savedAltitude = Number(d.altitude);
-        el.textContent = '经度 ' + activeLon.toFixed(6) + '  纬度 ' + activeLat.toFixed(6) + (d.accuracy ? '  精度 ' + d.accuracy + 'm' : '') + (Number.isFinite(savedAltitude) && savedAltitude !== 0 ? '  海拔 ' + savedAltitude.toFixed(0) + 'm' : '');
+        el.textContent = (activeEnabled ? '已启用 · ' : '已暂停 · ') + '经度 ' + activeLon.toFixed(6) + '  纬度 ' + activeLat.toFixed(6) + (d.accuracy != null ? '  水平精度 ' + d.accuracy + 'm' : '') + (d.verticalAccuracy != null ? '  垂直精度 ' + d.verticalAccuracy + 'm' : '') + (Number.isFinite(savedAltitude) ? '  海拔 ' + savedAltitude.toFixed(0) + 'm' : '');
         renderFavs();
       } else {
-        activeLon = null; activeLat = null;
+        activeStateLoaded = true;
+        activeLon = null; activeLat = null; activeEnabled = false;
         el.textContent = '无已保存的坐标';
         renderFavs();
       }
     })
     .catch(() => {
+      activeStateLoaded = false;
       el.textContent = '查询失败 (需要代理模块支持)';
     });
+}
+
+function setActiveState(action) {
+  fetch(SAVE_API + '?action=' + action, { method:'GET', mode:'cors', cache:'no-store' })
+    .then(r => r.json())
+    .then(d => {
+      if (!d.success) throw new Error(d.error || '状态更新失败');
+      activeEnabled = d.enabled !== false;
+      queryActive();
+      toast(activeEnabled ? '已启用虚拟定位' : '已暂停，坐标已保留');
+    })
+    .catch(e => toast(e.message || '状态更新失败', 3000));
 }
 
 function clearActive() {
@@ -346,7 +390,7 @@ function clearActive() {
     .then(r => r.json())
     .then(d => {
       if (d.success) {
-        activeLon = null; activeLat = null;
+        activeLon = null; activeLat = null; activeEnabled = false;
         document.getElementById('activeValue').textContent = '已清除';
         renderFavs();
         toast('已清除设备坐标');
@@ -362,17 +406,20 @@ async function save() {
   btn.textContent = '储存中...'; btn.disabled = true;
   showError(false);
   try {
-    await updateAltitudeForPosition(lat, lon);
+    if (!document.getElementById('altitude').value) await updateAltitudeForPosition(lat, lon);
     if (altitude == null) throw new Error('海拔查询失败');
-    const r = await fetch(SAVE_API + '?lon=' + lon + '&lat=' + lat + '&acc=25&altitude=' + encodeURIComponent(String(altitude)), {
+    altitude = readNumber('altitude', altitude, -12000, 100000);
+    const accuracy = readAccuracy();
+    const verticalAccuracy = readVerticalAccuracy();
+    const r = await fetch(SAVE_API + '?lon=' + lon + '&lat=' + lat + '&acc=' + encodeURIComponent(String(accuracy)) + '&verticalAccuracy=' + encodeURIComponent(String(verticalAccuracy)) + '&altitude=' + encodeURIComponent(String(altitude)), {
       method: 'GET', mode: 'cors', cache: 'no-store'
     });
     const d = await r.json();
     if (d.success) {
-      activeLon = lon; activeLat = lat;
+      activeLon = lon; activeLat = lat; activeEnabled = true;
       btn.textContent = '\\u2713 已储存'; btn.className = 'btn btn-primary success';
       document.getElementById('status').textContent = '\\u2713 已写入: ' + lon.toFixed(6) + ', ' + lat.toFixed(6) + ' · 海拔 ' + altitude.toFixed(0) + 'm · ' + new Date().toLocaleTimeString('zh-CN');
-      document.getElementById('activeValue').textContent = '经度 ' + lon.toFixed(6) + '  纬度 ' + lat.toFixed(6) + '  精度 25m' + formatAltitude(altitude);
+      document.getElementById('activeValue').textContent = '已启用 · 经度 ' + lon.toFixed(6) + '  纬度 ' + lat.toFixed(6) + '  水平精度 ' + accuracy + 'm  垂直精度 ' + verticalAccuracy + 'm' + formatAltitude(altitude);
       renderFavs();
       toast('\\u2713 坐标已写入设备，下次定位生效');
       setTimeout(() => { btn.textContent='储存到设备'; btn.className='btn btn-primary'; btn.disabled=false; }, 2500);
@@ -387,12 +434,14 @@ async function save() {
 }
 
 function locateMe() {
+  if (!activeStateLoaded) { toast('正在读取虚拟定位状态，请稍候', 2500); return; }
+  if (activeEnabled) { toast('请先暂停虚拟定位并刷新定位服务', 3500); return; }
   if (!navigator.geolocation) return toast('浏览器不支持定位');
   toast('获取位置中...');
   navigator.geolocation.getCurrentPosition(
     async pos => { moveTo(pos.coords.latitude, pos.coords.longitude, 16); setAltitude(pos.coords.altitude); if (altitude == null) await updateAltitudeForPosition(lat, lon); toast('已获取当前位置'); },
     err => toast('定位失败: ' + err.message, 3000),
-    { enableHighAccuracy:true, timeout:10000 }
+    { enableHighAccuracy:true, maximumAge:0, timeout:12000 }
   );
 }
 
