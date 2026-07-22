@@ -11,22 +11,32 @@
 ## 订阅地址
 
 **Surge:**
-https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.sgmodule
+https://raw.githubusercontent.com/SkywardLab/wloc/refs/heads/main/modules/wloc.sgmodule
 
 **Quantumult X:**
-https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.conf
+https://raw.githubusercontent.com/SkywardLab/wloc/refs/heads/main/modules/wloc.conf
 
 **Loon:**
-https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.lpx
+https://raw.githubusercontent.com/SkywardLab/wloc/refs/heads/main/modules/wloc.lpx
 
 **Stash:**
-https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.stoverride
+https://raw.githubusercontent.com/SkywardLab/wloc/refs/heads/main/modules/wloc.stoverride
 
 **Shadowrocket(小火箭):**
-https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.module
+https://raw.githubusercontent.com/SkywardLab/wloc/refs/heads/main/modules/wloc.module
 
 > Egern 可直接使用 Surge 模块
 > Stash 请直接订阅上面的 `.stoverride`，无需用 Script Hub 转换
+
+### 默认扩展域名支持
+
+默认模块已覆盖目前已知的完整 WLOC 域名集合：
+
+- `gsp-ssl.ls.apple.com`
+- `bluedot.is.autonavi.com`
+- `bluedot.is.autonavi.com.gds.alibabadns.com`
+
+[`modules/extended/`](modules/extended/) 保留为旧扩展订阅的兼容入口，与默认模块共享脚本、设置格式和升级路径。
 
 ---
 
@@ -112,14 +122,44 @@ https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.modul
 
 </details>
 
+### 核心兼容性
+
+- 识别完整 ARPC、synthetic、marker 和 bare Protobuf 响应。
+- 同时修改 Wi-Fi 记录和蜂窝响应字段 22/24。
+- 处理 gzip 响应并修正相关响应头。
+- 保留协议中的未知字段，方便兼容 Apple 后续扩展。
+- 解析异常时执行失败放行，设备继续接收原始定位响应。
+
+### 启用、暂停与清除
+
+在线选点页面提供三个独立操作：
+
+- **启用**：使用已保存位置继续虚拟定位。
+- **暂停**：保留坐标、水平精度、垂直精度和海拔，同时恢复真实定位响应。
+- **清除**：移除完整的设备持久化设置。
+
+虚拟定位处于启用状态时，“当前位置”按钮会提示先暂停并刷新定位服务，避免把已经修改的位置再次保存为设备当前位置。
+
+高级定位参数支持手动设置水平精度、垂直精度和海拔。收藏位置会一起保存这些参数，旧收藏自动采用默认精度。
+
+### 安全与稳定性
+
+- 选点页面使用 CSP、SRI、`no-referrer`、`nosniff` 和 `no-store` 安全策略。
+- 响应脚本采用 1 MiB 请求体上限和 12 秒超时。
+- 安全诊断在 `debug` 或 `all` 日志级别输出运行时、封装类型、压缩状态、字段统计及 Wi-Fi/蜂窝记录数量。
+- 诊断输出保护 BSSID、基站标识、token、原始二进制和完整请求头。
+
 <details>
 <summary><b>参数配置</b></summary>
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
-| longitude | 目标经度(在线选点优先) | null (透传) |
-| latitude | 目标纬度(在线选点优先) | null (透传) |
-| accuracy | 精度(米) | 25 |
+| enabled | 是否启用虚拟定位；`false` 透传原始 WLOC 响应 | true |
+| longitude | 目标经度，在线选点优先，兼容 `lon` | null (透传) |
+| latitude | 目标纬度，在线选点优先，兼容 `lat` | null (透传) |
+| accuracy | 水平精度(米)，兼容 `acc` | 25 |
+| verticalAccuracy | 垂直精度(米) | 30 |
+| altitude | 海拔(米) | 0 |
 | logLevel | 日志级别 | info |
 
 优先级: 在线选点储存 > 模块参数 > 默认值
@@ -136,6 +176,8 @@ https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.modul
 **方法二：清除持久化数据（透传模式）**
 
 清除已保存的坐标后，脚本进入**透传模式**——不修改 WLOC 响应，直接放行原始数据，系统自动恢复真实 GPS 定位。
+
+统一恢复语义：enabled=false 表示显式恢复真实定位/透传原始 WLOC 响应；清除旧持久化数据仍会触发透传模式。
 
 **透传模式触发条件：** 持久化数据为空（null）且模块参数为默认值（113.94114, 22.544577）时，脚本判定用户未自定义坐标，自动跳过修改。模块默认参数无需更改，仅清除持久化数据即可触发透传。
 
@@ -202,6 +244,36 @@ npm run deploy
 ```
 
 部署成功后会得到你自己的 Worker 地址（如 `https://wloc-spoofer.<你的子域名>.workers.dev`），用这个地址选点即可。
+
+### 高德地点搜索
+
+中国 POI 搜索优先使用高德 Web Service，并自动将 GCJ-02 结果转换为 WGS-84。请在 Cloudflare Worker 的 **Settings → Variables and Secrets** 中添加 Secret：
+
+```text
+AMAP_KEY=你的高德Web服务Key
+```
+
+Key 需要在高德开放平台创建，并选择“Web 服务”类型。高德搜索无结果或服务暂时不可用时，Worker 会自动回退到 Nominatim。
+
+### Shadowrocket 多设备远程配置
+
+每台 Shadowrocket 设备可使用独立的远程坐标、精度、海拔和启用状态。配置保存在 Cloudflare D1，本机 `$persistentStore` 保存最近一次有效配置作为网络异常回退。
+
+1. 在 Cloudflare Dashboard 创建 D1 数据库，例如 `wloc-devices`。
+2. 打开数据库控制台，执行 [`worker/migrations/0001_devices.sql`](worker/migrations/0001_devices.sql)。
+3. 打开 Worker 的 **Settings → Bindings → Add binding → D1 database**，变量名填写 `DB`，选择刚创建的数据库。
+4. 在 **Settings → Variables and Secrets** 添加 Secret `ADMIN_TOKEN`，建议使用 32 字节以上随机值。
+5. 重新部署 Worker，打开选点页面，在“远程设备”区域输入 `ADMIN_TOKEN` 并连接。
+6. 创建新设备，立即保存页面仅显示一次的 `deviceId` 和 `deviceToken`。
+7. 编辑 Shadowrocket 模块的 `Apple WLOC` 参数：
+
+```text
+deviceId=<设备ID>&deviceToken=<设备Token>&configBaseUrl=https%3A%2F%2F你的Worker域名
+```
+
+Shadowrocket 每次收到 WLOC 响应时拉取设备配置，请求超时为 3 秒。成功配置会写入本地缓存；网络异常时使用最近一次有效缓存；设备尚未配置远程参数时继续使用本机持久化设置。
+
+设备管理接口使用 `ADMIN_TOKEN`，客户端配置接口使用设备独立 Token。Token 通过 `Authorization: Bearer` 请求头传输，D1 仅保存设备 Token 的 SHA-256 摘要。
 
 > 免费账户每天 10 万次请求，个人使用完全够用。
 

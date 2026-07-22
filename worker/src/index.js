@@ -1,10 +1,32 @@
 import { Hono } from "hono/tiny";
 import { getPageHtml } from "./page.js";
 import { parseCoords, gcj02ToWgs84, round6 } from "./parse.js";
+import { searchPlaces } from "./search.js";
+import { registerDeviceRoutes } from "./device-routes.js";
 
 const app = new Hono();
+registerDeviceRoutes(app);
+
+const PAGE_CSP = [
+  "default-src 'none'",
+  "script-src https://unpkg.com 'unsafe-inline'",
+  "style-src https://unpkg.com 'unsafe-inline'",
+  "img-src https: data:",
+  "connect-src 'self' https://gs-loc.apple.com https://api.open-meteo.com https://nominatim.openstreetmap.org",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+const PAGE_HEADERS = {
+  "Content-Security-Policy": PAGE_CSP,
+  "Referrer-Policy": "no-referrer",
+  "X-Content-Type-Options": "nosniff",
+  "Cache-Control": "no-store",
+};
 
 app.get("/", (c) => {
+  for (const [name, value] of Object.entries(PAGE_HEADERS)) c.header(name, value);
   return c.html(getPageHtml());
 });
 
@@ -29,6 +51,17 @@ app.get("/api/parse", async (c) => {
   } catch (e) {
     c.header("Access-Control-Allow-Origin", "*");
     return c.json({ error: String(e && e.message ? e.message : e) }, 422);
+  }
+});
+
+app.get("/api/search", async (c) => {
+  const query = c.req.query("q") || "";
+  try {
+    const results = await searchPlaces(query, { amapKey: c.env?.AMAP_KEY });
+    c.header("Cache-Control", "no-store");
+    return c.json({ results });
+  } catch (error) {
+    return c.json({ error: error?.message || String(error) }, 502);
   }
 });
 

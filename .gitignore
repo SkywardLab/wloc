@@ -1,6 +1,9 @@
 node_modules/
-src/
-package.json
-package-lock.json
+__pycache__/
+*.pyc
 rollup.config.js
 .DS_Store
+.worktrees/
+
+tests/
+docs/superpowers/

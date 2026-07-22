@@ -7,8 +7,8 @@ export function getPageHtml() {
 <title>WLOC 虚拟定位</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="WLOC">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="anonymous"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"><\/script>
 <style>
 :root { --blue:#007aff; --green:#34c759; --red:#ff3b30; --gray:#8e8e93; --bg:#f2f2f7; --orange:#ff9500; }
 * { margin:0; padding:0; box-sizing:border-box; }
@@ -49,6 +49,12 @@ body { font-family:-apple-system,system-ui,"SF Pro","Helvetica Neue",sans-serif;
 .fav-item .fav-del { flex:none; width:28px; height:28px; border:none; border-radius:50%; background:transparent; color:var(--red); font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .15s; }
 .fav-item .fav-del:hover { background:rgba(255,59,48,.1); }
 .fav-empty { text-align:center; color:var(--gray); font-size:13px; padding:16px 0; }
+.search-results { margin-top:10px; display:grid; gap:6px; }
+.search-result { width:100%; border:none; background:var(--bg); border-radius:9px; padding:10px 12px; text-align:left; cursor:pointer; }
+.search-result:active { background:#e0e0e5; }
+.search-result-name { font-size:14px; font-weight:600; color:#222; }
+.search-result-address { margin-top:3px; font-size:11px; color:var(--gray); line-height:1.35; }
+.device-credential { margin-top:8px; padding:10px; border-radius:8px; background:#fff7e6; color:#6d4700; font:11px/1.5 "SF Mono",monospace; word-break:break-all; display:none; }
 .fav-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
 .fav-header h3 { margin-bottom:0; }
 .modal-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.4); z-index:10000; display:none; align-items:center; justify-content:center; padding:20px; }
@@ -88,13 +94,33 @@ body { font-family:-apple-system,system-ui,"SF Pro","Helvetica Neue",sans-serif;
     4. 当前网络已走代理
   </div>
   <div class="card">
+    <h3>远程设备</h3>
+    <div class="input-row">
+      <input id="adminToken" type="password" placeholder="Cloudflare ADMIN_TOKEN" />
+      <button class="btn btn-secondary" style="flex:none;min-width:64px" onclick="unlockDevices()">连接</button>
+    </div>
+    <div class="input-row">
+      <select id="deviceSelect" onchange="selectDevice()" style="flex:1;padding:10px 12px;border:1px solid #d1d1d6;border-radius:8px;background:#fff;min-width:0"><option value="">本机设置</option></select>
+      <button class="btn btn-secondary btn-sm" onclick="createRemoteDevice()">新增</button>
+      <button class="btn btn-secondary btn-sm" onclick="renameRemoteDevice()">改名</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteRemoteDevice()">删除</button>
+    </div>
+    <div class="device-credential" id="deviceCredential"></div>
+  </div>
+  <div class="card">
     <h3>选择目标位置</h3>
     <div class="coords" id="coords">点击地图或使用下方工具选择位置</div>
     <div class="row">
       <button class="btn btn-primary" id="saveBtn" onclick="save()">储存到设备</button>
       <button class="btn btn-secondary" onclick="addFav()">收藏位置</button>
-      <button class="btn btn-secondary" onclick="locateMe()">当前位置</button>
+      <button class="btn btn-secondary" id="currentLocation" onclick="locateMe()">当前位置</button>
     </div>
+    <details style="margin-top:10px">
+      <summary style="font-size:13px;color:var(--blue);cursor:pointer">高级定位参数</summary>
+      <div class="input-row"><input id="horizontalAccuracy" type="number" min="0" max="10000" value="25" placeholder="水平精度(米)" /></div>
+      <div class="input-row"><input id="verticalAccuracy" type="number" min="0" max="10000" value="30" placeholder="垂直精度(米)" /></div>
+      <div class="input-row"><input id="altitude" type="number" min="-12000" max="100000" placeholder="海拔(米，自动查询)" /></div>
+    </details>
   </div>
   <div class="card">
     <div class="fav-header">
@@ -111,7 +137,9 @@ body { font-family:-apple-system,system-ui,"SF Pro","Helvetica Neue",sans-serif;
     </div>
     <div class="row">
       <button class="btn btn-sm btn-secondary" onclick="queryActive()">刷新</button>
-      <button class="btn btn-sm btn-danger" onclick="clearActive()">清除数据</button>
+      <button class="btn btn-sm btn-primary" id="enableLocation" onclick="setActiveState('enable')">启用</button>
+      <button class="btn btn-sm btn-secondary" id="pauseLocation" onclick="setActiveState('disable')">暂停</button>
+      <button class="btn btn-sm btn-danger" id="clearLocation" onclick="clearActive()">清除</button>
     </div>
   </div>
   <div class="card">
@@ -128,6 +156,7 @@ body { font-family:-apple-system,system-ui,"SF Pro","Helvetica Neue",sans-serif;
       <input id="searchInput" placeholder="输入地名（如: 上海外滩）" />
       <button class="btn btn-secondary" style="flex:none;min-width:56px" onclick="searchPlace()">搜索</button>
     </div>
+    <div id="searchResults" class="search-results"></div>
   </div>
   <div class="status" id="status">选好位置后点击「储存到设备」写入代理工具</div>
 </div>
@@ -147,8 +176,15 @@ body { font-family:-apple-system,system-ui,"SF Pro","Helvetica Neue",sans-serif;
 const SAVE_API = 'https://gs-loc.apple.com/wloc-settings/save';
 const FAV_KEY = 'wloc_favorites';
 let lat = 22.544577, lon = 113.94114;
+let altitude = null;
 let selected = false;
 let activeLon = null, activeLat = null;
+let activeEnabled = false;
+let activeStateLoaded = false;
+let searchResults = [];
+let adminToken = sessionStorage.getItem('wloc_admin_token') || '';
+let remoteDevices = [];
+let selectedDeviceId = '';
 
 const map = L.map('map').setView([lat, lon], 13);
 const tiles = {
@@ -178,9 +214,64 @@ function setPos(newLat, newLon) {
   document.getElementById('coords').textContent = '经度 ' + lon.toFixed(6) + '  纬度 ' + lat.toFixed(6);
 }
 
+function setAltitude(newAltitude) {
+  if (newAltitude == null || newAltitude === '') {
+    altitude = null;
+    const input = document.getElementById('altitude');
+    if (input) input.value = '';
+    return;
+  }
+  const n = Number(newAltitude);
+  altitude = Number.isFinite(n) ? n : null;
+  const input = document.getElementById('altitude');
+  if (input) input.value = altitude == null ? '' : String(altitude);
+}
+
+function readNumber(id, fallback, min, max) {
+  const value = Number(document.getElementById(id).value);
+  return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
+}
+function readAccuracy() { return readNumber('horizontalAccuracy', 25, 0, 10000); }
+function readVerticalAccuracy() { return readNumber('verticalAccuracy', 30, 0, 10000); }
+function setAdvancedFields(value) {
+  document.getElementById('horizontalAccuracy').value = String(Number.isFinite(Number(value.accuracy)) ? Number(value.accuracy) : 25);
+  document.getElementById('verticalAccuracy').value = String(Number.isFinite(Number(value.verticalAccuracy)) ? Number(value.verticalAccuracy) : 30);
+  setAltitude(value.altitude);
+}
+
+function formatAltitude(value) {
+  return Number.isFinite(value) ? '  海拔 ' + value.toFixed(0) + 'm' : '';
+}
+
+function formatFavoriteAltitude(value) {
+  if (value == null || value === '') return '';
+  const favAltitude = Number(value);
+  return Number.isFinite(favAltitude) && favAltitude !== 0 ? ' · 海拔 ' + favAltitude.toFixed(0) + 'm' : '';
+}
+
+async function fetchElevation(newLat, newLon) {
+  try {
+    const r = await fetch('https://api.open-meteo.com/v1/elevation?latitude=' + encodeURIComponent(String(newLat)) + '&longitude=' + encodeURIComponent(String(newLon)), { cache:'no-store' });
+    const d = await r.json();
+    const elevation = d && d.elevation && d.elevation.length ? d.elevation[0] : null;
+    if (elevation == null || elevation === '') return null;
+    const n = Number(elevation);
+    return Number.isFinite(n) ? Math.round(n) : null;
+  } catch(e) {
+    return null;
+  }
+}
+
+async function updateAltitudeForPosition(newLat, newLon) {
+  const value = await fetchElevation(newLat, newLon);
+  setAltitude(value);
+  return altitude;
+}
+
 function moveTo(newLat, newLon, zoom) {
   setPos(newLat, newLon);
   map.setView([lat, lon], zoom || 15);
+  updateAltitudeForPosition(lat, lon);
 }
 
 function toast(msg, ms) {
@@ -215,7 +306,7 @@ function renderFavs() {
     return '<div class="fav-item" onclick="loadFav(' + i + ')">' +
       '<div class="fav-info">' +
         '<div class="fav-name">' + escHtml(f.name) + '<\\/div>' +
-        '<div class="fav-coords">' + f.lon.toFixed(6) + ', ' + f.lat.toFixed(6) + '<\\/div>' +
+        '<div class="fav-coords">' + f.lon.toFixed(6) + ', ' + f.lat.toFixed(6) + formatFavoriteAltitude(f.altitude) + '<\\/div>' +
         (isActive ? '<div class="fav-active">\\u2713 当前生效<\\/div>' : '') +
       '<\\/div>' +
       '<button class="fav-del" onclick="event.stopPropagation();delFav(' + i + ')" title="删除">\\u00d7<\\/button>' +
@@ -227,9 +318,10 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function addFav() {
+async function addFav() {
   if (!selected) { toast('请先在地图上选择一个位置'); return; }
-  document.getElementById('favModalCoords').textContent = lon.toFixed(6) + ', ' + lat.toFixed(6);
+  if (!document.getElementById('altitude').value) await updateAltitudeForPosition(lat, lon);
+  document.getElementById('favModalCoords').textContent = lon.toFixed(6) + ', ' + lat.toFixed(6) + formatFavoriteAltitude(altitude);
   document.getElementById('favNameInput').value = '';
   document.getElementById('favModal').classList.add('show');
   setTimeout(() => document.getElementById('favNameInput').focus(), 100);
@@ -243,7 +335,7 @@ function confirmFav() {
   const name = document.getElementById('favNameInput').value.trim();
   if (!name) { toast('请输入备注名称'); return; }
   const favs = getFavs();
-  favs.push({ name, lon, lat, time: new Date().toISOString() });
+  favs.push({ name, lon, lat, accuracy: readAccuracy(), verticalAccuracy: readVerticalAccuracy(), altitude: Number.isFinite(altitude) ? altitude : null, time: new Date().toISOString() });
   saveFavs(favs);
   closeFavModal();
   renderFavs();
@@ -253,7 +345,9 @@ function confirmFav() {
 function loadFav(i) {
   const favs = getFavs();
   if (!favs[i]) return;
-  moveTo(favs[i].lat, favs[i].lon, 15);
+  setPos(favs[i].lat, favs[i].lon);
+  map.setView([lat, lon], 15);
+  setAdvancedFields(favs[i]);
   toast(favs[i].name + ' (' + favs[i].lon.toFixed(4) + ', ' + favs[i].lat.toFixed(4) + ')');
 }
 
@@ -274,36 +368,133 @@ function clearAllFav() {
   toast('已清空所有收藏');
 }
 
+function adminHeaders(json) {
+  const headers = { Authorization:'Bearer ' + adminToken };
+  if (json) headers['Content-Type'] = 'application/json';
+  return headers;
+}
+
+async function apiJson(url, options) {
+  const response = await fetch(url, options || {});
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || '远程设备请求失败');
+  return body;
+}
+
+function renderDeviceSelect() {
+  const select = document.getElementById('deviceSelect');
+  select.innerHTML = '<option value="">本机设置<\/option>' + remoteDevices.map(device =>
+    '<option value="' + escHtml(device.id) + '">' + escHtml(device.name) + '<\/option>'
+  ).join('');
+  select.value = selectedDeviceId;
+}
+
+async function loadDevices() {
+  const body = await apiJson('/api/devices', { headers:adminHeaders(), cache:'no-store' });
+  remoteDevices = body.devices || [];
+  if (selectedDeviceId && !remoteDevices.some(device => device.id === selectedDeviceId)) selectedDeviceId = '';
+  renderDeviceSelect();
+}
+
+async function unlockDevices() {
+  adminToken = document.getElementById('adminToken').value.trim();
+  if (!adminToken) return toast('请输入 ADMIN_TOKEN');
+  sessionStorage.setItem('wloc_admin_token', adminToken);
+  try { await loadDevices(); toast('远程设备已连接'); }
+  catch (error) { toast(error.message, 3500); }
+}
+
+async function createRemoteDevice() {
+  if (!adminToken) return toast('请先连接远程设备');
+  const name = prompt('设备名称');
+  if (!name) return;
+  try {
+    const body = await apiJson('/api/devices', { method:'POST', headers:adminHeaders(true), body:JSON.stringify({name}) });
+    const el = document.getElementById('deviceCredential');
+    el.style.display = 'block';
+    el.textContent = '仅显示一次，请保存：\\ndeviceId=' + body.device.id + '\\ndeviceToken=' + body.token;
+    await loadDevices();
+    selectedDeviceId = body.device.id;
+    renderDeviceSelect();
+    queryActive();
+  } catch (error) { toast(error.message, 3500); }
+}
+
+async function renameRemoteDevice() {
+  if (!selectedDeviceId) return toast('请选择远程设备');
+  const current = remoteDevices.find(device => device.id === selectedDeviceId);
+  const name = prompt('新设备名称', current ? current.name : '');
+  if (!name) return;
+  try { await apiJson('/api/devices/' + encodeURIComponent(selectedDeviceId), { method:'PATCH', headers:adminHeaders(true), body:JSON.stringify({name}) }); await loadDevices(); }
+  catch (error) { toast(error.message, 3500); }
+}
+
+async function deleteRemoteDevice() {
+  if (!selectedDeviceId) return toast('请选择远程设备');
+  if (!confirm('确定删除该远程设备？')) return;
+  try { await apiJson('/api/devices/' + encodeURIComponent(selectedDeviceId), { method:'DELETE', headers:adminHeaders() }); selectedDeviceId=''; await loadDevices(); queryActive(); }
+  catch (error) { toast(error.message, 3500); }
+}
+
+function selectDevice() {
+  selectedDeviceId = document.getElementById('deviceSelect').value;
+  queryActive();
+}
+
 /* ---- Active location query ---- */
 function queryActive() {
   const el = document.getElementById('activeValue');
   el.textContent = '查询中...';
-  fetch(SAVE_API + '?action=query', { method:'GET', mode:'cors', cache:'no-store' })
-    .then(r => r.json())
+  const request = selectedDeviceId
+    ? apiJson('/api/devices/' + encodeURIComponent(selectedDeviceId) + '/location', { headers:adminHeaders(), cache:'no-store' }).then(body => ({success:true, ...body.device}))
+    : fetch(SAVE_API + '?action=query', { method:'GET', mode:'cors', cache:'no-store' }).then(r => r.json());
+  request
     .then(d => {
-      if (d.success && d.longitude && d.latitude) {
+      if (d.success && d.longitude != null && d.latitude != null) {
+        activeStateLoaded = true;
         activeLon = parseFloat(d.longitude);
         activeLat = parseFloat(d.latitude);
-        el.textContent = '经度 ' + activeLon.toFixed(6) + '  纬度 ' + activeLat.toFixed(6) + (d.accuracy ? '  精度 ' + d.accuracy + 'm' : '');
+        activeEnabled = d.enabled !== false;
+        setAdvancedFields(d);
+        const savedAltitude = Number(d.altitude);
+        el.textContent = (activeEnabled ? '已启用 · ' : '已暂停 · ') + '经度 ' + activeLon.toFixed(6) + '  纬度 ' + activeLat.toFixed(6) + (d.accuracy != null ? '  水平精度 ' + d.accuracy + 'm' : '') + (d.verticalAccuracy != null ? '  垂直精度 ' + d.verticalAccuracy + 'm' : '') + (Number.isFinite(savedAltitude) ? '  海拔 ' + savedAltitude.toFixed(0) + 'm' : '');
         renderFavs();
       } else {
-        activeLon = null; activeLat = null;
+        activeStateLoaded = true;
+        activeLon = null; activeLat = null; activeEnabled = false;
         el.textContent = '无已保存的坐标';
         renderFavs();
       }
     })
     .catch(() => {
+      activeStateLoaded = false;
       el.textContent = '查询失败 (需要代理模块支持)';
     });
 }
 
+function setActiveState(action) {
+  const request = selectedDeviceId
+    ? apiJson('/api/devices/' + encodeURIComponent(selectedDeviceId) + '/enable', { method:'POST', headers:adminHeaders(true), body:JSON.stringify({enabled:action==='enable'}) }).then(body => ({success:true, ...body.device}))
+    : fetch(SAVE_API + '?action=' + action, { method:'GET', mode:'cors', cache:'no-store' }).then(r => r.json());
+  request
+    .then(d => {
+      if (!d.success) throw new Error(d.error || '状态更新失败');
+      activeEnabled = d.enabled !== false;
+      queryActive();
+      toast(activeEnabled ? '已启用虚拟定位' : '已暂停，坐标已保留');
+    })
+    .catch(e => toast(e.message || '状态更新失败', 3000));
+}
+
 function clearActive() {
   if (!confirm('确定清除设备上已保存的坐标？清除后将使用模块默认参数或停止修改定位。')) return;
-  fetch(SAVE_API + '?action=clear', { method:'GET', mode:'cors', cache:'no-store' })
-    .then(r => r.json())
+  const request = selectedDeviceId
+    ? apiJson('/api/devices/' + encodeURIComponent(selectedDeviceId) + '/location', { method:'DELETE', headers:adminHeaders() }).then(() => ({success:true}))
+    : fetch(SAVE_API + '?action=clear', { method:'GET', mode:'cors', cache:'no-store' }).then(r => r.json());
+  request
     .then(d => {
       if (d.success) {
-        activeLon = null; activeLat = null;
+        activeLon = null; activeLat = null; activeEnabled = false;
         document.getElementById('activeValue').textContent = '已清除';
         renderFavs();
         toast('已清除设备坐标');
@@ -319,15 +510,27 @@ async function save() {
   btn.textContent = '储存中...'; btn.disabled = true;
   showError(false);
   try {
-    const r = await fetch(SAVE_API + '?lon=' + lon + '&lat=' + lat + '&acc=25', {
-      method: 'GET', mode: 'cors', cache: 'no-store'
-    });
-    const d = await r.json();
+    setAltitude(document.getElementById('altitude').value);
+    const previousAltitude = altitude;
+    await updateAltitudeForPosition(lat, lon);
+    if (altitude == null) setAltitude(previousAltitude);
+    if (altitude == null) throw new Error('海拔查询失败');
+    altitude = readNumber('altitude', altitude, -12000, 100000);
+    const accuracy = readAccuracy();
+    const verticalAccuracy = readVerticalAccuracy();
+    let d;
+    if (selectedDeviceId) {
+      const body = await apiJson('/api/devices/' + encodeURIComponent(selectedDeviceId) + '/location', { method:'PUT', headers:adminHeaders(true), body:JSON.stringify({longitude:lon,latitude:lat,accuracy,verticalAccuracy,altitude}) });
+      d = { success:true, ...body.device };
+    } else {
+      const r = await fetch(SAVE_API + '?lon=' + lon + '&lat=' + lat + '&acc=' + encodeURIComponent(String(accuracy)) + '&verticalAccuracy=' + encodeURIComponent(String(verticalAccuracy)) + '&altitude=' + encodeURIComponent(String(altitude)), { method:'GET', mode:'cors', cache:'no-store' });
+      d = await r.json();
+    }
     if (d.success) {
-      activeLon = lon; activeLat = lat;
+      activeLon = lon; activeLat = lat; activeEnabled = true;
       btn.textContent = '\\u2713 已储存'; btn.className = 'btn btn-primary success';
-      document.getElementById('status').textContent = '\\u2713 已写入: ' + lon.toFixed(6) + ', ' + lat.toFixed(6) + ' \\u00b7 ' + new Date().toLocaleTimeString('zh-CN');
-      document.getElementById('activeValue').textContent = '经度 ' + lon.toFixed(6) + '  纬度 ' + lat.toFixed(6) + '  精度 25m';
+      document.getElementById('status').textContent = '\\u2713 已写入: ' + lon.toFixed(6) + ', ' + lat.toFixed(6) + ' · 海拔 ' + altitude.toFixed(0) + 'm · ' + new Date().toLocaleTimeString('zh-CN');
+      document.getElementById('activeValue').textContent = '已启用 · 经度 ' + lon.toFixed(6) + '  纬度 ' + lat.toFixed(6) + '  水平精度 ' + accuracy + 'm  垂直精度 ' + verticalAccuracy + 'm' + formatAltitude(altitude);
       renderFavs();
       toast('\\u2713 坐标已写入设备，下次定位生效');
       setTimeout(() => { btn.textContent='储存到设备'; btn.className='btn btn-primary'; btn.disabled=false; }, 2500);
@@ -342,12 +545,14 @@ async function save() {
 }
 
 function locateMe() {
+  if (!activeStateLoaded) { toast('正在读取虚拟定位状态，请稍候', 2500); return; }
+  if (activeEnabled) { toast('请先暂停虚拟定位并刷新定位服务', 3500); return; }
   if (!navigator.geolocation) return toast('浏览器不支持定位');
   toast('获取位置中...');
   navigator.geolocation.getCurrentPosition(
-    pos => { moveTo(pos.coords.latitude, pos.coords.longitude, 16); toast('已获取当前位置'); },
+    async pos => { moveTo(pos.coords.latitude, pos.coords.longitude, 16); setAltitude(pos.coords.altitude); if (altitude == null) await updateAltitudeForPosition(lat, lon); toast('已获取当前位置'); },
     err => toast('定位失败: ' + err.message, 3000),
-    { enableHighAccuracy:true, timeout:10000 }
+    { enableHighAccuracy:true, maximumAge:0, timeout:12000 }
   );
 }
 
@@ -380,18 +585,40 @@ function parseUrl() {
   toast('已解析: ' + result.lon.toFixed(4) + ', ' + result.lat.toFixed(4));
 }
 
+function renderSearchResults() {
+  const el = document.getElementById('searchResults');
+  if (!searchResults.length) { el.innerHTML = ''; return; }
+  el.innerHTML = searchResults.map((item, index) =>
+    '<button class="search-result" onclick="selectSearchResult(' + index + ')">' +
+      '<div class="search-result-name">' + escHtml(item.name || '未命名地点') + '<\/div>' +
+      '<div class="search-result-address">' + escHtml(item.address || (item.lon + ', ' + item.lat)) + '<\/div>' +
+    '<\/button>'
+  ).join('');
+}
+
+function selectSearchResult(index) {
+  const item = searchResults[index];
+  if (!item) return;
+  moveTo(Number(item.lat), Number(item.lon), 16);
+  searchResults = [];
+  renderSearchResults();
+  toast('已选择: ' + (item.name || '地点'));
+}
+
 async function searchPlace() {
   const q = document.getElementById('searchInput').value.trim();
   if (!q) return toast('请输入地名');
   toast('搜索中...');
   try {
-    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(q));
-    const results = await r.json();
-    if (!results.length) { toast('未找到: ' + q, 3000); return; }
-    const p = results[0];
-    moveTo(parseFloat(p.lat), parseFloat(p.lon), 15);
-    toast(p.display_name.slice(0, 40));
-  } catch(e) { toast('搜索失败', 3000); }
+    const r = await fetch('/api/search?q=' + encodeURIComponent(q), { cache:'no-store' });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.error || '搜索服务失败');
+    searchResults = body.results || [];
+    renderSearchResults();
+    if (!searchResults.length) { toast('未找到: ' + q, 3000); return; }
+    if (searchResults.length === 1) selectSearchResult(0);
+    else toast('找到 ' + searchResults.length + ' 个地点，请选择');
+  } catch(e) { toast(e.message || '搜索失败', 3000); }
 }
 
 document.addEventListener('paste', e => {
@@ -406,6 +633,8 @@ document.getElementById('urlInput').addEventListener('keydown', e => { if(e.key=
 document.getElementById('favNameInput').addEventListener('keydown', e => { if(e.key==='Enter') confirmFav(); });
 
 renderFavs();
+document.getElementById('adminToken').value = adminToken;
+if (adminToken) loadDevices().catch(() => {});
 queryActive();
 <\/script>
 </body>
