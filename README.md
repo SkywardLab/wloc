@@ -28,6 +28,16 @@ https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.modul
 > Egern 可直接使用 Surge 模块
 > Stash 请直接订阅上面的 `.stoverride`，无需用 Script Hub 转换
 
+### 扩展域名模块
+
+标准模块保持 `gs-loc.apple.com` 与 `gs-loc-cn.apple.com` 两个 MITM 主机。代理日志显示 `/clls/wloc` 使用下列域名时，可改用 [`modules/extended/`](modules/extended/) 中对应平台的扩展模块：
+
+- `gsp-ssl.ls.apple.com`
+- `bluedot.is.autonavi.com`
+- `bluedot.is.autonavi.com.gds.alibabadns.com`
+
+扩展模块与标准模块共享脚本、设置格式和升级路径。
+
 ---
 
 ## 快捷指令（推荐，最方便）
@@ -112,14 +122,44 @@ https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.modul
 
 </details>
 
+### 核心兼容性
+
+- 识别完整 ARPC、synthetic、marker 和 bare Protobuf 响应。
+- 同时修改 Wi-Fi 记录和蜂窝响应字段 22/24。
+- 处理 gzip 响应并修正相关响应头。
+- 保留协议中的未知字段，方便兼容 Apple 后续扩展。
+- 解析异常时执行失败放行，设备继续接收原始定位响应。
+
+### 启用、暂停与清除
+
+在线选点页面提供三个独立操作：
+
+- **启用**：使用已保存位置继续虚拟定位。
+- **暂停**：保留坐标、水平精度、垂直精度和海拔，同时恢复真实定位响应。
+- **清除**：移除完整的设备持久化设置。
+
+虚拟定位处于启用状态时，“当前位置”按钮会提示先暂停并刷新定位服务，避免把已经修改的位置再次保存为设备当前位置。
+
+高级定位参数支持手动设置水平精度、垂直精度和海拔。收藏位置会一起保存这些参数，旧收藏自动采用默认精度。
+
+### 安全与稳定性
+
+- 选点页面使用 CSP、SRI、`no-referrer`、`nosniff` 和 `no-store` 安全策略。
+- 响应脚本采用 1 MiB 请求体上限和 12 秒超时。
+- 安全诊断在 `debug` 或 `all` 日志级别输出运行时、封装类型、压缩状态、字段统计及 Wi-Fi/蜂窝记录数量。
+- 诊断输出保护 BSSID、基站标识、token、原始二进制和完整请求头。
+
 <details>
 <summary><b>参数配置</b></summary>
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
-| longitude | 目标经度(在线选点优先) | null (透传) |
-| latitude | 目标纬度(在线选点优先) | null (透传) |
-| accuracy | 精度(米) | 25 |
+| enabled | 是否启用虚拟定位；`false` 透传原始 WLOC 响应 | true |
+| longitude | 目标经度，在线选点优先，兼容 `lon` | null (透传) |
+| latitude | 目标纬度，在线选点优先，兼容 `lat` | null (透传) |
+| accuracy | 水平精度(米)，兼容 `acc` | 25 |
+| verticalAccuracy | 垂直精度(米) | 30 |
+| altitude | 海拔(米) | 0 |
 | logLevel | 日志级别 | info |
 
 优先级: 在线选点储存 > 模块参数 > 默认值
@@ -136,6 +176,8 @@ https://raw.githubusercontent.com/Yu9191/wloc/refs/heads/main/modules/wloc.modul
 **方法二：清除持久化数据（透传模式）**
 
 清除已保存的坐标后，脚本进入**透传模式**——不修改 WLOC 响应，直接放行原始数据，系统自动恢复真实 GPS 定位。
+
+统一恢复语义：enabled=false 表示显式恢复真实定位/透传原始 WLOC 响应；清除旧持久化数据仍会触发透传模式。
 
 **透传模式触发条件：** 持久化数据为空（null）且模块参数为默认值（113.94114, 22.544577）时，脚本判定用户未自定义坐标，自动跳过修改。模块默认参数无需更改，仅清除持久化数据即可触发透传。
 

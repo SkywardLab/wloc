@@ -1,0 +1,22 @@
+{
+  "name": "wloc",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:wloc": "node scripts/build-wloc.mjs",
+    "build:worker": "node scripts/build-worker.mjs",
+    "build": "npm run build:wloc && npm run build:worker",
+    "test:wloc": "node --test tests/js/*.test.mjs",
+    "check": "npm run test:wloc && python3 -m unittest discover -s tests -p 'test_*.py' && npm run build && git diff --exit-code -- dist/wloc.js dist/wloc-settings.js worker/wloc-worker.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy --minify"
+  },
+  "dependencies": {
+    "hono": "^4.10.6",
+    "pako": "^2.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "wrangler": "^4.107.0"
+  }
+}
